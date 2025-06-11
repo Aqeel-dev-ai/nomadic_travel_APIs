@@ -1,0 +1,9 @@
+Django==5.0.2
+python-dotenv==1.0.1
+djangorestframework==3.14.0
+Pillow==10.2.0
+geopy==2.4.1
+djangorestframework-simplejwt==5.3.1
+django-rest-registration==0.7.0
+python-dotenv>=1.0.0 
+rdf-yasg>=1.21.10
