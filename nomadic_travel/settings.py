@@ -27,7 +27,9 @@ SECRET_KEY = 'django-insecure-74=1j&x_fupgd%8#r)wsg&ir800!9tq4q)%0x+-y_n$nf&ky2n
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+#ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']  # Allow all hosts for development
+
 
 
 # Application definition
@@ -51,9 +53,15 @@ INSTALLED_APPS = [
     'accounts',
     'destination',
     'schedule',
+
+    'corsheaders'
 ]
 
+
+
+
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -119,7 +127,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Karachi'
 
 USE_I18N = True
 
@@ -200,4 +208,5 @@ SWAGGER_SETTINGS = {
     },
     'USE_SESSION_AUTH': False,
     'JSON_EDITOR': True,
+    'VALIDATOR_URL': None,
 }

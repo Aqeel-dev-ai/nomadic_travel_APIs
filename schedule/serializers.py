@@ -12,20 +12,44 @@ class DestinationRateSerializer(serializers.ModelSerializer):
         fields = ['id', 'destination', 'destination_name', 'adult_rate', 'child_rate', 'kid_rate', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
+class DestinationField(serializers.Field):
+    def to_representation(self, value):
+        return value.id
+
+    def to_internal_value(self, data):
+        if isinstance(data, int):
+            try:
+                return Destination.objects.get(id=data)
+            except Destination.DoesNotExist:
+                raise serializers.ValidationError(f"Destination with ID {data} not found")
+        elif isinstance(data, str):
+            try:
+                return Destination.objects.get(name__iexact=data)
+            except Destination.DoesNotExist:
+                raise serializers.ValidationError(f"Destination '{data}' not found")
+        else:
+            raise serializers.ValidationError("Destination must be either an ID (integer) or name (string)")
+
 class TourSerializer(serializers.ModelSerializer):
     destination_details = DestinationSerializer(source='destination', read_only=True)
-    destination_name = serializers.CharField(write_only=True, required=True)
+    destination = DestinationField()
     price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_participants = serializers.SerializerMethodField()
+    children = serializers.IntegerField(default=0, required=False)
+    kids = serializers.IntegerField(default=0, required=False)
 
     class Meta:
         model = Tour
         fields = [
-            'id', 'title', 'description', 'destination_name', 'destination', 'destination_details',
-            'start_date', 'end_date', 'price', 'current_participants',
+            'id', 'title', 'description', 'destination', 'destination_details',
+            'start_date', 'end_date', 'price', 'total_participants',
             'adults', 'children', 'kids',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['current_participants', 'destination', 'price']
+        read_only_fields = ['price', 'total_participants']
+
+    def get_total_participants(self, obj):
+        return obj.adults + obj.children + obj.kids
 
     def validate(self, data):
         # Validate dates
@@ -43,49 +67,24 @@ class TourSerializer(serializers.ModelSerializer):
                     "end_date": "End date must be after start date"
                 })
 
+        # Validate destination has rates
+        destination = data.get('destination')
+        if destination and not hasattr(destination, 'rates'):
+            raise serializers.ValidationError({
+                "destination": f"Rates not set for destination '{destination.name}'. Please contact administrator."
+            })
+
+        # Ensure children and kids are not negative
+        if data.get('children', 0) < 0:
+            raise serializers.ValidationError({
+                "children": "Children count cannot be negative"
+            })
+        if data.get('kids', 0) < 0:
+            raise serializers.ValidationError({
+                "kids": "Kids count cannot be negative"
+            })
+
         return data
-
-    def validate_destination_name(self, value):
-        try:
-            # Try to find destination by name
-            destination = Destination.objects.get(name__iexact=value)
-            # Check if rates exist for this destination
-            if not hasattr(destination, 'rates'):
-                raise serializers.ValidationError(f"Rates not set for destination '{value}'. Please contact administrator.")
-            return value
-        except Destination.DoesNotExist:
-            raise serializers.ValidationError(f"Destination '{value}' not found")
-
-    def create(self, validated_data):
-        # Get the destination name and remove it from validated_data
-        destination_name = validated_data.pop('destination_name')
-        
-        # Find the destination by name
-        try:
-            destination = Destination.objects.get(name__iexact=destination_name)
-        except Destination.DoesNotExist:
-            raise serializers.ValidationError(f"Destination '{destination_name}' not found")
-        
-        # Create the tour with the found destination
-        tour = Tour.objects.create(destination=destination, **validated_data)
-        return tour
-
-    def update(self, instance, validated_data):
-        # Handle destination name if provided
-        if 'destination_name' in validated_data:
-            destination_name = validated_data.pop('destination_name')
-            try:
-                destination = Destination.objects.get(name__iexact=destination_name)
-                instance.destination = destination
-            except Destination.DoesNotExist:
-                raise serializers.ValidationError(f"Destination '{destination_name}' not found")
-
-        # Update other fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        
-        instance.save()
-        return instance
 
     def validate_title(self, value):
         if not value.strip():

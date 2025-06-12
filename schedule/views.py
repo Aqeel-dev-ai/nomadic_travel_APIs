@@ -12,19 +12,28 @@ logger = logging.getLogger(__name__)
 # Create your views here.
 
 class TourViewSet(viewsets.ModelViewSet):
-    queryset = Tour.objects.all()
     serializer_class = TourSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ['-start_date']  # Ensure latest tours appear first
+
+    def get_queryset(self):
+        return Tour.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save()
+        serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
         # Log the request data
         logger.info(f"Tour creation request data: {request.data}")
         
+        # Set default values for children and kids if not provided
+        if 'children' not in request.data:
+            request.data['children'] = 0
+        if 'kids' not in request.data:
+            request.data['kids'] = 0
+        
         # Validate required fields
-        required_fields = ['title', 'description', 'destination_name', 'start_date', 'end_date', 'price', 'max_participants']
+        required_fields = ['title', 'description', 'destination', 'start_date', 'end_date', 'adults']
         missing_fields = [field for field in required_fields if field not in request.data]
         
         if missing_fields:
@@ -39,8 +48,26 @@ class TourViewSet(viewsets.ModelViewSet):
         
         if start_date and end_date:
             try:
+                # Parse the dates and ensure they are timezone-aware
                 start = timezone.datetime.fromisoformat(start_date.replace('Z', '+00:00'))
                 end = timezone.datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                
+                # If no time is provided, set it to current time
+                if start.hour == 0 and start.minute == 0 and start.second == 0:
+                    current_time = timezone.now()
+                    start = start.replace(
+                        hour=current_time.hour,
+                        minute=current_time.minute,
+                        second=current_time.second
+                    )
+                
+                if end.hour == 0 and end.minute == 0 and end.second == 0:
+                    current_time = timezone.now()
+                    end = end.replace(
+                        hour=current_time.hour,
+                        minute=current_time.minute,
+                        second=current_time.second
+                    )
                 
                 if start < timezone.now():
                     return Response(
@@ -53,43 +80,43 @@ class TourViewSet(viewsets.ModelViewSet):
                         {"detail": "End date must be after start date"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+                
+                # Update the request data with timezone-aware dates
+                request.data['start_date'] = start.isoformat()
+                request.data['end_date'] = end.isoformat()
+                
             except ValueError:
                 return Response(
                     {"detail": "Invalid date format. Use ISO format (YYYY-MM-DDTHH:MM:SSZ)"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # Validate price
-        price = request.data.get('price')
-        if price is not None:
-            try:
-                price = float(price)
-                if price < 0:
-                    return Response(
-                        {"detail": "Price cannot be negative"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            except ValueError:
+        # Validate participant numbers
+        try:
+            request.data['adults'] = int(request.data['adults'])
+            request.data['children'] = int(request.data['children'])
+            request.data['kids'] = int(request.data['kids'])
+            
+            if request.data['adults'] < 0:
                 return Response(
-                    {"detail": "Invalid price format"},
+                    {"detail": "Adults count cannot be negative"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-        # Validate participants
-        max_participants = request.data.get('max_participants')
-        if max_participants is not None:
-            try:
-                max_participants = int(max_participants)
-                if max_participants <= 0:
-                    return Response(
-                        {"detail": "Maximum participants must be greater than 0"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            except ValueError:
+            if request.data['children'] < 0:
                 return Response(
-                    {"detail": "Invalid maximum participants format"},
+                    {"detail": "Children count cannot be negative"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            if request.data['kids'] < 0:
+                return Response(
+                    {"detail": "Kids count cannot be negative"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Invalid participant count format. All counts must be numbers."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
