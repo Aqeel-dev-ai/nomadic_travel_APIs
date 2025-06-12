@@ -95,3 +95,9 @@ class TourSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Description cannot be empty")
         return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['user'] = request.user
+        return super().create(validated_data)

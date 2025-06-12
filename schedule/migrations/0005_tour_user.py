@@ -4,6 +4,21 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+def set_default_user(apps, schema_editor):
+    Tour = apps.get_model('schedule', 'Tour')
+    User = apps.get_model('auth', 'User')
+    
+    # Get the first superuser or create one if none exists
+    default_user = User.objects.filter(is_superuser=True).first()
+    if not default_user:
+        default_user = User.objects.create_superuser(
+            username='admin',
+            email='admin@example.com',
+            password='admin123'
+        )
+    
+    # Update all existing tours to use the default user
+    Tour.objects.filter(user__isnull=True).update(user=default_user)
 
 class Migration(migrations.Migration):
 
@@ -16,6 +31,22 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='tour',
             name='user',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='tours', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(
+                null=True,
+                blank=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name='tours',
+                to=settings.AUTH_USER_MODEL
+            ),
+        ),
+        migrations.RunPython(set_default_user),
+        migrations.AlterField(
+            model_name='tour',
+            name='user',
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name='tours',
+                to=settings.AUTH_USER_MODEL
+            ),
         ),
     ]
